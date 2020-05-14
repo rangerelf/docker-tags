@@ -1,12 +1,12 @@
-#!/data/data/com.termux/files/usr/bin/python
+#!/usr/bin/env python3
+# pylint: disable=bad-continuation
 """
 docker_tags.py
 """
-import sys
 import json
 import urllib.request
 
-HUB_URL = "https://registry.hub.docker.com/v2/repositories/{}{}/tags/"
+DOCKER_HUB_REGISTRY = "https://registry.hub.docker.com"
 
 KB = 1024.0
 MB = 1024*1024.0
@@ -27,52 +27,53 @@ def hrn(num):
         return '%.02fGB' % (num / GB)
     return '???'
 
-def backfill_results(page_data, params={}):
+def backfilled(page_data, params):
     "Add some items we need for the report"
     for item in page_data['results']:
         item.update(params)
-        item['readable_size'] = hrn(tag['full_size'])
+        item['readable_size'] = hrn(item['full_size'])
     return page_data
 
-def get(name_or_url, log_json=False, backfill_params={}):
-    "Returns the json blob from the given url"
-    if name_or_url.startswith('http:') \
-    or name_or_url.startswith('https:'):
-        url = name_or_url
-    elif '/' in 
-        url = HUB_URL.format('', name)
-    else:
-        url = HUB_URL.format('library/', name)
-    rsp = urllib.request.urlopen(url)
-    if 200 <= rsp.getcode() < 300:
+def get(url, log_json=None, backfill_params=None):
+    "Iterate the data pages from the given url"
+    while url:
+        rsp = urllib.request.urlopen(url)
+        if not 200 <= rsp.getcode() < 300:
+            raise BadResponseStatus(rsp.getcode())
         text = rsp.read()
         if log_json:
             log_json.write(text.decode('utf8'))
-        return backfill_results(json.loads(text), backfill_params)
-    raise BadResponseStatus(rsp.getcode())
+        data = json.loads(text)
+        yield backfilled(data, backfill_params or {})
+        url = data.get('next')
 
-def run_report(tags, **kwarg):
-    "Report all versions for a given tag"
+def repo_url(name, registry=DOCKER_HUB_REGISTRY):
+    "Yield each url created from the repo names in 'names'"
+    prefix = f"{registry}/v2/repositories"
+    if '/' in name:
+        return f"{prefix}/{name}/tags/"
+    return f"{prefix}/library/{name}/tags/"
+
+def run_report(docker_repos, **kwarg):
+    "Report versions of images found in 'docker_repositories'"
     jsl = kwarg.get('json_log')
     template = kwarg.get('template')
     try:
-        for name in tags:
+        for name in docker_repos:
             bfp = {'repository_name': name}
-            next_page = name
-            while next_page:
-                page = get(next_page, log_json=jsl, backfill_params=bfp)
-                next_page = page.get('next')
+            for page in get(repo_url(name), log_json=jsl, backfill_params=bfp):
                 if template:
                     for tag in page["results"]:
                         print(template.format(**tag))
                 else:
-                    comma = "," if next_page else ""
+                    comma = "," if page.get('next') else ""
                     print(json.dumps(page, indent=2)+comma)
     except KeyboardInterrupt:
         print("")
 
+# Dictionary of callables with the format.
 TEMPLATES = {
-    'short': '{repository_name}: {name} ({readable_size})'
+    'short': "{repository_name}: {name} ({readable_size})"
 }
 
 def main():

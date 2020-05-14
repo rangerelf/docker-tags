@@ -1,3 +1,4 @@
 # Ignore logged json content.
 *.js
 *.json
+/venv
