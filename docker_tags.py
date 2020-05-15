@@ -8,24 +8,16 @@ import urllib.request
 
 DOCKER_HUB_REGISTRY = "https://registry.hub.docker.com"
 
-KB = 1024.0
-MB = 1024*1024.0
-GB = 1024*1024*1024.0
-
-class BadResponseStatus(ValueError):
-    "Request returned a bad response status."
-
-def hrn(num):
+def hrn(num, magnitude=1024):
     "Human-readable-number"
-    if num:
-        if num < KB:
-            return '{:,}B'.format(num)
-        if num < MB:
-            return '%.01fKB' % (num / KB)
-        if num < GB:
-            return '%.02fMB' % (num / MB)
-        return '%.02fGB' % (num / GB)
-    return '???'
+    if num < magnitude:
+        return f"{num:,}B"
+    ## Up to PetaBytes should be more than enough.
+    for mag in 'KMGTP':
+        num, frac = divmod(num, magnitude)
+        if num < magnitude:
+            return f"{num:,}.{(100*frac//1024):02}{mag}B"
+    return f"{num:,}.{(100*frac//1024):02}PB"
 
 def backfilled(page_data, params):
     "Add some items we need for the report"
@@ -33,6 +25,9 @@ def backfilled(page_data, params):
         item.update(params)
         item['readable_size'] = hrn(item['full_size'])
     return page_data
+
+class BadResponseStatus(ValueError):
+    "Request returned a bad response status."
 
 def get(url, log_json=None, backfill_params=None):
     "Iterate the data pages from the given url"
