@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# pylint: disable=bad-continuation
+# pylint: disable=bad-continuation,eval-used
 """
 docker_tags.py
 """
@@ -19,17 +19,10 @@ def hrn(num, magnitude=1024):
             return f"{num:,}.{(100*frac//1024):02}{mag}B"
     return f"{num:,}.{(100*frac//1024):02}PB"
 
-def backfilled(page_data, params):
-    "Add some items we need for the report"
-    for item in page_data['results']:
-        item.update(params)
-        item['readable_size'] = hrn(item['full_size'])
-    return page_data
-
 class BadResponseStatus(ValueError):
     "Request returned a bad response status."
 
-def get(url, log_json=None, backfill_params=None):
+def get(url, log_json=None):
     "Iterate the data pages from the given url"
     while url:
         rsp = urllib.request.urlopen(url)
@@ -39,8 +32,8 @@ def get(url, log_json=None, backfill_params=None):
         if log_json:
             log_json.write(text.decode('utf8'))
         data = json.loads(text)
-        yield backfilled(data, backfill_params or {})
-        url = data.get('next')
+        yield data
+        url = data['next']
 
 def repo_url(name, registry=DOCKER_HUB_REGISTRY):
     "Yield each url created from the repo names in 'names'"
@@ -49,26 +42,41 @@ def repo_url(name, registry=DOCKER_HUB_REGISTRY):
         return f"{prefix}/{name}/tags/"
     return f"{prefix}/library/{name}/tags/"
 
+def compile_template(template):
+    "Return a code object to run the template"
+    prefix, template = template.split(":", 1)
+    if prefix == 'D':
+        co_o = compile(f'''f"{template}"''', '<template>', 'eval')
+        def template_func(page, _vars):
+            "Run the template code in the context of the page"
+            return eval(co_o, {**globals(), **_vars}, page)
+    elif prefix == 'L':
+        co_o = compile(f'''(f"{template}")''', '<template>', 'eval')
+        def template_func(page, _vars):
+            "Run the template code in the context of the result line"
+            base_ns = {**globals(), **_vars}
+            return "\n".join(eval(co_o, {**base_ns, **_})
+                             for _ in page["results"])
+    else:
+        raise ValueError(f"Unknown template prefix: {prefix}")
+    return template_func
+
 def run_report(docker_repos, **kwarg):
     "Report versions of images found in 'docker_repositories'"
     jsl = kwarg.get('json_log')
-    template = kwarg.get('template')
+    tmpl_f = compile_template(kwarg.get('template'))
     try:
-        for name in docker_repos:
-            bfp = {'repository_name': name}
-            for page in get(repo_url(name), log_json=jsl, backfill_params=bfp):
-                if template:
-                    for tag in page["results"]:
-                        print(template.format(**tag))
-                else:
-                    comma = "," if page.get('next') else ""
-                    print(json.dumps(page, indent=2)+comma)
+        for repository_name in docker_repos:
+            for page in get(repo_url(repository_name), log_json=jsl):
+                report_page = tmpl_f(page, locals())
+                print(report_page)
     except KeyboardInterrupt:
         print("")
 
 # Dictionary of callables with the format.
 TEMPLATES = {
-    'short': "{repository_name}: {name} ({readable_size})"
+    'short': "L:{repository_name}:{name} ({hrn(full_size)})",
+    'raw': "D:json.dumps(page, indent=2)"
 }
 
 def main():
