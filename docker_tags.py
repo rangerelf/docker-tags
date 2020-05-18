@@ -3,6 +3,8 @@
 """
 docker_tags.py
 """
+import os
+import sys
 import json
 import urllib.request
 
@@ -22,60 +24,57 @@ def hrn(num, magnitude=1024):
 class BadResponseStatus(ValueError):
     "Request returned a bad response status."
 
-def get(url, json_log=None):
-    "Iterate the data pages from the given url"
-    while url:
-        rsp = urllib.request.urlopen(url)
-        if not 200 <= rsp.getcode() < 300:
-            raise BadResponseStatus(rsp.getcode())
-        text = rsp.read()
-        if json_log:
-            json_log.write(text.decode('utf8'))
-        data = json.loads(text)
-        yield data
-        url = data['next']
-
 def repo_url(name, registry=DOCKER_HUB_REGISTRY):
     "Yield each url created from the repo names in 'names'"
     if '/' in name:
         return f"{registry}/v2/repositories/{name}/tags/"
     return f"{registry}/v2/repositories/library/{name}/tags/"
 
-def brief_report(docker_repos, **kwarg):
-    "One line per docker tag version"
-    jsl = kwarg.get('json_log')
-    for nth, repo_name in enumerate(docker_repos):
-        if nth:
-            print("="*64)
-        for page in get(repo_url(repo_name), json_log=jsl):
-            version = page["name"]
-            size = hrn(page["full_size"])
-            arch = ", ".join(_["arch"] for _ in page["images"])
-            print(f"{repo_name}:{version} Size: {size} Arch: {arch}")
-
-def report(report_obj, docker_repo, json_log):
-    "Send out the report"
-    for nth, repo_name in enumerate(docker_repos):
-        if nth:
-            report_obj.separator()
-        for page in get(repo_url(repo_name), json_log=jsl):
-            report_obj.page(repo_name, page)
-
 class Report:
-    def __init__(self, stream):
-        self._stream = stream 
-    def report(self, docker_repos, json_log):
+    "Base report class"
+    _stream = None
+    _jsonlog = None
+    _text = None
+    _json = None
+
+    def __init__(self, **kw):
+        self._stream = kw.get("stream") or sys.stdout
+        self._jsonlog = open(kw.get("json_log") or os.devnull, "w")
+
+    def start(self):
+        "Start the report"
+        # Nothing to do normally.
+
+    def finish(self):
+        "Do something at the end"
+        # Nothing.
+
+    def hub_data(self, repo_name):
+        "Iterate the data pages from the given repository"
+        url = repo_url(repo_name)
+        while url:
+            rsp = urllib.request.urlopen(url)
+            if not 200 <= rsp.getcode() < 300:
+                raise BadResponseStatus(rsp.getcode())
+            self._text = rsp.read().decode("utf8")
+            self._jsonlog.write(self._text)
+            data = json.loads(self._text)
+            yield data
+            url = data['next']
+
+    def run(self, docker_repos):
         "The main report loop"
         repo_num = 0 # Have to pre-initialize repo_num ...
         for repo_num, repo_name in enumerate(docker_repos):
             if repo_num:
                 self.separator()
-            url = repo_url(repo_name)
-            for page_num, page in enumerate(url, json_log=json_log):
+            else:
+                self.start()
+            for page_num, page in enumerate(self.hub_data(repo_name)):
                 self.report_page(repo_num, repo_name, page_num, page)
         # because if docker_repos is empty then repo_num will be undefined
         if repo_num:
-            self.finish_report()
+            self.finish()
 
     def report_page(self, repo_num, repo_name, page_num, page_data):
         "Print out the page data"
@@ -88,20 +87,33 @@ class Report:
 class RawReport(Report):
     "Print out the raw json"
     def separator(self):
-        self.stream.write(",\n")
+        self._stream.write(",\n")
     def report_page(self, repo_num, repo_name, page_num, page_data):
-        self.stream.write(json.dumps(page_data, indent=2))
+        self._stream.write(json.dumps(page_data, indent=2))
 
 class BriefReport(Report):
     "Print out a per-line report"
     def separator(self):
-        self.stream.write(f"{'='*64}\n")
+        self._stream.write(f"{'='*64}\n")
 
     def report_page(self, repo_num, repo_name, page_num, page_data):
-        for ent in page_data["entries"]:
-            version = ent["name"]
-            size = hrn(ent["full_size"])
-            self.stream.write(f"{repo_name}:{version} ({size})\n")
+        for ent in page_data["results"]:
+            self.report_line(repo_name, **ent)
+
+    def report_line(self, repo_name, name, full_size, images, **kw):
+        "Print out a single line"
+        size = hrn(full_size)
+        arch = ", ".join(_["architecture"] for _ in images)
+        self._stream.write(f"{repo_name}:{name}  {size}  [{arch}]\n")
+
+class DetailedReport(Report):
+    "The detailed, verbose report"
+
+REPORT_CLASSES = {
+    'brief': BriefReport,
+    'raw': RawReport,
+    'detailed': DetailedReport
+}
 
 def main():
     "Run from the command line"
@@ -110,23 +122,18 @@ def main():
     agp.add_argument("--json", action="store", default=None,
             type=FileType('w'),
             help="Stream received json to this file")
+    agp.add_argument("--report", type=str, action="store", default="brief",
+            help="Use this report type (brief|raw|detailed)")
     agp.add_argument("images", nargs="+",
             help="Docker images to check")
-    tgrp = agp.add_mutually_exclusive_group()
-    tgrp.add_argument("--template", "-t", action="store", default="short",
-            help="Set the report template")
-    tgrp.add_argument("--raw", action="store_true", default=False,
-            help="Output raw json instead of a report")
     args = agp.parse_args()
-    if args.raw:
-        fmt = None
-    elif args.template.startswith('format:'):
-        fmt = args.template.lstrip('format:')
-    elif args.template in TEMPLATES:
-        fmt = TEMPLATES[args.template]
-    else:
-        agp.error("Unknown formatting argument")
-    run_report(args.images, json_log=args.json, template=fmt)
+    cls = REPORT_CLASSES.get(args.report)
+    if not cls:
+        args.error(f"Unknown report type: {args.report}")
+    try:
+        cls(json_log=args.json, stream=sys.stdout).run(args.images)
+    except KeyboardInterrupt:
+        print("")
 
 if __name__ == "__main__":
     main()
