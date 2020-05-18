@@ -12,6 +12,8 @@ DOCKER_HUB_REGISTRY = "https://registry.hub.docker.com"
 
 def hrn(num, magnitude=1024):
     "Human-readable-number"
+    if not num:
+        return "?"
     if num < magnitude:
         return f"{num:,}B"
     ## Up to PetaBytes should be more than enough.
@@ -49,6 +51,14 @@ class Report:
         "Do something at the end"
         # Nothing.
 
+    def page_separator(self):
+        "Print out a separator line between repositories"
+        # Do nothing
+
+    def page_heading(self, repo_num, repo_name, page_num, page_data):
+        "Display a page heading before its data?"
+        # but nothing
+
     def hub_data(self, repo_name):
         "Iterate the data pages from the given repository"
         url = repo_url(repo_name)
@@ -67,47 +77,63 @@ class Report:
         repo_num = 0 # Have to pre-initialize repo_num ...
         for repo_num, repo_name in enumerate(docker_repos):
             if repo_num:
-                self.separator()
+                self.page_separator()
             else:
                 self.start()
             for page_num, page in enumerate(self.hub_data(repo_name)):
-                self.report_page(repo_num, repo_name, page_num, page)
+                self.page_heading(repo_num, repo_name, page_num, page)
+                self.page_content(repo_num, repo_name, page_num, page)
         # because if docker_repos is empty then repo_num will be undefined
         if repo_num:
             self.finish()
 
-    def report_page(self, repo_num, repo_name, page_num, page_data):
+    def page_content(self, repo_num, repo_name, page_num, page_data):
         "Print out the page data"
-        raise NotImplementedError()
+        # Empty by default
 
-    def separator(self):
-        "Print out a separator line between repositories"
-        raise NotImplementedError()
+    def content_line(self, repo_name, name, full_size, images, **_):
+        "Print out a single line"
+        # Empty by default
+
+    def filter_architectures(self, images):
+        "Return a list of all the supported architectures"
+        if images:
+            return [(_["architecture"], _["variant"], _["size"])
+                    for _ in images]
+        return None
 
 class RawReport(Report):
     "Print out the raw json"
-    def separator(self):
-        self._stream.write(",\n")
-    def report_page(self, repo_num, repo_name, page_num, page_data):
+    def page_content(self, repo_num, repo_name, page_num, page_data):
         self._stream.write(json.dumps(page_data, indent=2))
 
 class BriefReport(Report):
     "Print out a per-line report"
-    def separator(self):
+    def page_separator(self):
+        # Print out a line between repositories
         self._stream.write(f"{'='*64}\n")
 
-    def report_page(self, repo_num, repo_name, page_num, page_data):
+    def page_content(self, repo_num, repo_name, page_num, page_data):
         for ent in page_data["results"]:
-            self.report_line(repo_name, **ent)
+            self.content_line(repo_name, **ent)
 
-    def report_line(self, repo_name, name, full_size, images, **kw):
-        "Print out a single line"
+    def content_line(self, repo_name, name, full_size, images, **_):
         size = hrn(full_size)
-        arch = ", ".join(_["architecture"] for _ in images)
+        archs = sorted(self.filter_architectures(images) or ["x86_64"])
+        arch = ", ".join(f"{a}/{v}" if v else a for a, v, s in archs)
         self._stream.write(f"{repo_name}:{name}  {size}  [{arch}]\n")
 
-class DetailedReport(Report):
+class DetailedReport(BriefReport):
     "The detailed, verbose report"
+    def content_line(self, repo_name, name, full_size, images, **_):
+        wrt = self._stream.write
+        wrt(f"{repo_name}:{name}\n")
+        archs = sorted(self.filter_architectures(images) or \
+                       [("x86_64", "", full_size)])
+        for arch, variant, size in sorted(archs):
+            variant = f"/{variant}" if variant else ""
+            wrt(f"  {arch}{variant}  {hrn(size)}\n")
+        wrt("\n")
 
 REPORT_CLASSES = {
     'brief': BriefReport,
