@@ -8,6 +8,8 @@ import sys
 import json
 import urllib.request
 
+from datetime import datetime
+
 DOCKER_HUB_REGISTRY = "https://registry.hub.docker.com"
 
 def hrn(num, magnitude=1024):
@@ -91,16 +93,20 @@ class Report:
         "Print out the page data"
         # Empty by default
 
-    def content_line(self, repo_name, name, full_size, images, **_):
+    def content_line(self, repo_name, **_):
         "Print out a single line"
         # Empty by default
 
-    def filter_architectures(self, images):
+    # pylint: disable=no-self-use
+    def filter_architectures(self, images, default=None):
         "Return a list of all the supported architectures"
         if images:
-            return [(_["architecture"], _["variant"], _["size"])
-                    for _ in images]
-        return None
+            arch1 = [(_["architecture"], _["variant"], _["size"])
+                     for _ in images]
+            arch2 = [(f"{a}{'/' if v else ''}{v or ''}", s)
+                     for a, v, s in arch1]
+            return [(a, s) for a, s in arch2 if a not in EXCEPT_ARCH]
+        return default
 
 class RawReport(Report):
     "Print out the raw json"
@@ -117,22 +123,28 @@ class BriefReport(Report):
         for ent in page_data["results"]:
             self.content_line(repo_name, **ent)
 
-    def content_line(self, repo_name, name, full_size, images, **_):
+    # pylint: disable=arguments-differ
+    def content_line(self, repo_name, name, full_size, **_):
         size = hrn(full_size)
-        archs = sorted(self.filter_architectures(images) or ["x86_64"])
-        arch = ", ".join(f"{a}/{v}" if v else a for a, v, s in archs)
-        self._stream.write(f"{repo_name}:{name}  {size}  [{arch}]\n")
+        archs = self.filter_architectures(_["images"], [("x86_64", full_size)])
+        alst = ", ".join(a for a, s in sorted(archs))
+        self._stream.write(f"{repo_name}:{name}  {size}  [{alst}]\n")
 
 class DetailedReport(BriefReport):
     "The detailed, verbose report"
-    def content_line(self, repo_name, name, full_size, images, **_):
+    # pylint: disable=arguments-differ
+    def content_line(self, repo_name, name, full_size, last_updated, **_):
         wrt = self._stream.write
-        wrt(f"{repo_name}:{name}\n")
-        archs = sorted(self.filter_architectures(images) or \
-                       [("x86_64", "", full_size)])
-        for arch, variant, size in sorted(archs):
-            variant = f"/{variant}" if variant else ""
-            wrt(f"  {arch}{variant}  {hrn(size)}\n")
+        if last_updated:
+            try:
+                upddt = datetime.strptime(last_updated, "%Y-%m-%dT%H:%M:%S.%fZ")
+                last_updated = f" ({upddt.ctime()})"
+            except ValueError:
+                upddt = last_updated = ""
+        wrt(f"{repo_name}:{name}{last_updated}\n")
+        archs = self.filter_architectures(_["images"], [("x86_64", full_size)])
+        for arch, size in sorted(archs):
+            wrt(f"  {arch}  {hrn(size)}\n")
         wrt("\n")
 
 REPORT_CLASSES = {
@@ -141,6 +153,8 @@ REPORT_CLASSES = {
     'detailed': DetailedReport
 }
 
+EXCEPT_ARCH = {"386", "arm/v7", "ppc64le", "s390x"}
+
 def main():
     "Run from the command line"
     from argparse import ArgumentParser, FileType
@@ -148,6 +162,8 @@ def main():
     agp.add_argument("--json", action="store", default=None,
             type=FileType('w'),
             help="Stream received json to this file")
+    agp.add_argument("--all-arch", action="store_true", default=False,
+            help="Don't omit the uncommon architectures")
     agp.add_argument("--report", type=str, action="store", default="brief",
             help="Use this report type (brief|raw|detailed)")
     agp.add_argument("images", nargs="+",
@@ -156,6 +172,12 @@ def main():
     cls = REPORT_CLASSES.get(args.report)
     if not cls:
         args.error(f"Unknown report type: {args.report}")
+    if args.all_arch:
+        sys.stderr.write("Displaying all architectures\n")
+        EXCEPT_ARCH.clear()
+    else:
+        _ = ", ".join(EXCEPT_ARCH)
+        sys.stderr.write(f"Omitting these architectures: {_}\n")
     try:
         cls(json_log=args.json, stream=sys.stdout).run(args.images)
     except KeyboardInterrupt:
