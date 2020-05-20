@@ -67,7 +67,7 @@ class Report:
 
     def run(self, docker_repos):
         "The main report loop"
-        repo_num = 0 # Have to pre-initialize repo_num ...
+        repo_num = None # Have to pre-initialize repo_num ...
         for repo_num, repo_name in enumerate(docker_repos):
             if repo_num:
                 self.page_separator()
