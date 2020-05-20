@@ -25,9 +25,6 @@ def hrn(num, magnitude=1024):
             return f"{num:,}.{(100*frac//1024):02}{mag}B"
     return f"{num:,}.{(100*frac//1024):02}PB"
 
-class BadResponseStatus(ValueError):
-    "Request returned a bad response status."
-
 def repo_url(name, registry=DOCKER_HUB_REGISTRY):
     "Yield each url created from the repo names in 'names'"
     if '/' in name:
@@ -50,8 +47,10 @@ class Report:
         url = repo_url(repo_name)
         while url:
             rsp = urllib.request.urlopen(url)
-            if not 200 <= rsp.getcode() < 300:
-                raise BadResponseStatus(rsp.getcode())
+            status, body = rsp.getcode(), rsp.read().decode("utf8")
+            if not 200 <= status < 300:
+                sys.stderr.write(f"[W] Bad http status: {status} [{body}]\n")
+                break
             self._text = rsp.read().decode("utf8")
             self._jsonlog.write(self._text)
             data = json.loads(self._text)
