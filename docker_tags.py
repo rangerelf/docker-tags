@@ -78,7 +78,7 @@ class Report:
                 self.page_content(repo_num, repo_name, page_num, page)
                 self.page_bottom(repo_num, repo_name, page_num, page)
         # because if docker_repos is empty then repo_num will be undefined
-        if repo_num:
+        if repo_num is not None:
             self.finish()
 
     def start(self):
