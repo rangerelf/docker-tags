@@ -35,8 +35,6 @@ class Report:
     "Base report class"
     _stream = None
     _jsonlog = None
-    _text = None
-    _json = None
 
     def __init__(self, **kw):
         self._stream = kw.get("stream") or sys.stdout
@@ -51,9 +49,8 @@ class Report:
             if not 200 <= status < 300:
                 sys.stderr.write(f"[W] Bad http status: {status} [{body}]\n")
                 break
-            self._text = rsp.read().decode("utf8")
-            self._jsonlog.write(self._text)
-            data = json.loads(self._text)
+            self._jsonlog.writelines([body, "\n"])
+            data = json.loads(body)
             yield data
             url = data['next']
 
