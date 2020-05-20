@@ -76,6 +76,7 @@ class Report:
             for page_num, page in enumerate(self.hub_data(repo_name)):
                 self.page_heading(repo_num, repo_name, page_num, page)
                 self.page_content(repo_num, repo_name, page_num, page)
+                self.page_bottom(repo_num, repo_name, page_num, page)
         # because if docker_repos is empty then repo_num will be undefined
         if repo_num:
             self.finish()
