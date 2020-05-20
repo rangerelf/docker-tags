@@ -114,6 +114,26 @@ class RawReport(Report):
     def page_content(self, repo_num, repo_name, page_num, page_data):
         self._stream.write(json.dumps(page_data, indent=2))
 
+class JsReport(Report):
+    "Print out a valid json report"
+    def start(self):
+        self._stream.write("{")
+
+    def page_content(self, repo_num, repo_name, page_num, page_data):
+        from json import dumps
+        if page_num == 0:
+            self._stream.writelines([
+                f'"count":{page_data["count"]},',
+                '"results":['])
+        sub_doc = []
+        for nth, _ in enumerate(page_data["results"]):
+            sub_doc.append("," if nth else "")
+            sub_doc.append(dumps(_, indent=None, separators=(',', ':')))
+        self._stream.writelines(sub_doc)
+
+    def finish(self):
+        self._stream.write("]}")
+
 class BriefReport(Report):
     "Print out a per-line report"
     def page_separator(self):
@@ -151,6 +171,7 @@ class DetailedReport(BriefReport):
 REPORT_CLASSES = {
     'brief': BriefReport,
     'raw': RawReport,
+    'js': JsReport,
     'detailed': DetailedReport
 }
 
