@@ -58,6 +58,17 @@ class Report:
             yield data
             url = data['next']
 
+    # pylint: disable=no-self-use
+    def filter_architectures(self, images, default=None):
+        "Return a list of all the supported architectures"
+        if images:
+            arch1 = [(_["architecture"], _["variant"], _["size"])
+                     for _ in images]
+            arch2 = [(f"{a}{'/' if v else ''}{v or ''}", s)
+                     for a, v, s in arch1]
+            return [(a, s) for a, s in arch2 if a not in EXCEPT_ARCH]
+        return default
+
     def run(self, docker_repos):
         "The main report loop"
         repo_num = 0 # Have to pre-initialize repo_num ...
@@ -100,17 +111,6 @@ class Report:
     def content_line(self, repo_name, **_):
         "Print out a single line"
         # Empty by default
-
-    # pylint: disable=no-self-use
-    def filter_architectures(self, images, default=None):
-        "Return a list of all the supported architectures"
-        if images:
-            arch1 = [(_["architecture"], _["variant"], _["size"])
-                     for _ in images]
-            arch2 = [(f"{a}{'/' if v else ''}{v or ''}", s)
-                     for a, v, s in arch1]
-            return [(a, s) for a, s in arch2 if a not in EXCEPT_ARCH]
-        return default
 
 class RawReport(Report):
     "Print out the raw json"
