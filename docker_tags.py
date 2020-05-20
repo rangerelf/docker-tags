@@ -45,22 +45,6 @@ class Report:
         self._stream = kw.get("stream") or sys.stdout
         self._jsonlog = open(kw.get("json_log") or os.devnull, "w")
 
-    def start(self):
-        "Start the report"
-        # Nothing to do normally.
-
-    def finish(self):
-        "Do something at the end"
-        # Nothing.
-
-    def page_separator(self):
-        "Print out a separator line between repositories"
-        # Do nothing
-
-    def page_heading(self, repo_num, repo_name, page_num, page_data):
-        "Display a page heading before its data?"
-        # but nothing
-
     def hub_data(self, repo_name):
         "Iterate the data pages from the given repository"
         url = repo_url(repo_name)
@@ -89,8 +73,28 @@ class Report:
         if repo_num:
             self.finish()
 
+    def start(self):
+        "Start the report"
+        # Nothing to do normally.
+
+    def finish(self):
+        "Do something at the end"
+        # Nothing.
+
+    def page_separator(self):
+        "Print out a separator line between repositories"
+        # Do nothing
+
+    def page_heading(self, repo_num, repo_name, page_num, page_data):
+        "Display a page heading before its data?"
+        # but nothing
+
     def page_content(self, repo_num, repo_name, page_num, page_data):
         "Print out the page data"
+        # Empty by default
+
+    def page_bottom(self, repo_num, repo_name, page_num, page_data):
+        "Print out at the bottom of the page"
         # Empty by default
 
     def content_line(self, repo_name, **_):
