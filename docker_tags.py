@@ -8,7 +8,7 @@ import sys
 import json
 import urllib.request
 
-from datetime import datetime
+from datetime import datetime as dt
 
 DOCKER_HUB_REGISTRY = "https://registry.hub.docker.com"
 
@@ -52,10 +52,10 @@ class Report:
             self._jsonlog.writelines([body, "\n"])
             data = json.loads(body)
             yield data
-            url = data['next']
+            url = data["next"]
 
     # pylint: disable=no-self-use
-    def filter_architectures(self, images, default=None):
+    def architectures(self, images, default=None):
         "Return a list of all the supported architectures"
         if images:
             arch1 = [(_["architecture"], _["variant"], _["size"])
@@ -127,7 +127,7 @@ class BriefReport(Report):
     # pylint: disable=arguments-differ
     def content_line(self, repo_name, name, full_size, **_):
         size = hrn(full_size)
-        archs = self.filter_architectures(_["images"], [("x86_64", full_size)])
+        archs = self.architectures(_["images"], [("x86_64", full_size)])
         alst = ", ".join(a for a, s in sorted(archs))
         self._stream.write(f"{repo_name}:{name}  {size}  [{alst}]\n")
 
@@ -138,12 +138,12 @@ class DetailedReport(BriefReport):
         wrt = self._stream.write
         if last_updated:
             try:
-                upddt = datetime.strptime(last_updated, "%Y-%m-%dT%H:%M:%S.%fZ")
+                upddt = dt.strptime(last_updated, "%Y-%m-%dT%H:%M:%S.%fZ")
                 last_updated = f" ({upddt.ctime()})"
             except ValueError:
                 upddt = last_updated = ""
         wrt(f"{repo_name}:{name}{last_updated}\n")
-        archs = self.filter_architectures(_["images"], [("x86_64", full_size)])
+        archs = self.architectures(_["images"], [("x86_64", full_size)])
         for arch, size in sorted(archs):
             wrt(f"  {arch}  {hrn(size)}\n")
         wrt("\n")
