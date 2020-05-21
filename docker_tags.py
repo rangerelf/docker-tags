@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 # pylint: disable=bad-continuation,eval-used
 """
-docker_tags.py
+Query the public docker hub for available versions
+of one or more repositories.
 """
+
+__author__ = "Gustavo Cordova Avila"
+__version__ = '1.0'
+
 import os
 import sys
 import json
