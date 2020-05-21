@@ -190,17 +190,22 @@ def main():
     "Run from the command line"
     from argparse import ArgumentParser
     agp = ArgumentParser(description=__doc__)
-    agp.add_argument("--all-arch", action="store_true", default=False,
-            help="Don't omit the uncommon architectures")
-    agp.add_argument("--report", type=str, action="store", default="brief",
-            help="Use this report type (brief|raw|detailed)")
-    agp.add_argument("images", nargs="+",
+    _ = ", ".join(sorted(EXCEPT_ARCH))
+    agp.add_argument("--all",
+            action="store_true", default=False,
+            help=f"Don't omit any architectures ({_})")
+    _ = "|".join(sorted(REPORT_CLASSES))
+    agp.add_argument("--report",
+            action="store", type=str, default="brief",
+            help=f"Set the report type to use ({_})")
+    agp.add_argument("images",
+            action="store", type=str, nargs="+",
             help="Docker images to check")
     args = agp.parse_args()
     cls = REPORT_CLASSES.get(args.report)
     if not cls:
         args.error(f"Unknown report type: {args.report}")
-    if args.all_arch:
+    if args.all:
         sys.stderr.write("Displaying all architectures\n")
         EXCEPT_ARCH.clear()
     else:
