@@ -54,17 +54,6 @@ class Report:
             yield data
             url = data["next"]
 
-    # pylint: disable=no-self-use
-    def architectures(self, images, default=None):
-        "Return a list of all the supported architectures"
-        if images:
-            arch1 = [(_["architecture"], _["variant"], _["size"])
-                     for _ in images]
-            arch2 = [(f"{a}{'/' if v else ''}{v or ''}", s)
-                     for a, v, s in arch1]
-            return [(a, s) for a, s in arch2 if a not in EXCEPT_ARCH]
-        return default
-
     def run(self, docker_repos):
         "The main report loop"
         repo_num = None # Have to pre-initialize repo_num ...
@@ -134,6 +123,16 @@ class JsReport(Report):
     def finish(self):
         self._stream.write("]}")
 
+def _fmt1(architecture, variant, os, os_version, size, **_):
+    "Return a single architecture formatted"
+    arch = f'{architecture}'+(f'/{variant}' if variant else '')
+    if arch in EXCEPT_ARCH:
+        return None
+    return arch \
+    + (f':{os[0].upper()}' if os else '') \
+    + (f'-{os_version.split(".")[0]}' if os_version else ''), \
+    size
+
 class BriefReport(Report):
     "Print out a per-line report"
     def page_separator(self):
@@ -150,6 +149,14 @@ class BriefReport(Report):
         archs = self.architectures(_["images"], [("x86_64", full_size)])
         alst = ", ".join(a for a, s in sorted(archs))
         self._stream.write(f"{repo_name}:{name}  {size}  [{alst}]\n")
+
+    # pylint: disable=no-self-use
+    def architectures(self, images, default=None):
+        "Return a list of all the supported architectures"
+        if images:
+            found = [_fmt1(**_) for _ in images]
+            return list(dict(_ for _ in found if _).items())
+        return default
 
 class DetailedReport(BriefReport):
     "The detailed, verbose report"
@@ -175,7 +182,7 @@ REPORT_CLASSES = {
     'detailed': DetailedReport
 }
 
-EXCEPT_ARCH = {"386", "arm/v7", "ppc64le", "s390x"}
+EXCEPT_ARCH = {"386", "arm/v6", "arm/v7", "ppc64le", "s390x"}
 
 def main():
     "Run from the command line"
