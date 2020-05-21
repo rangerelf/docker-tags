@@ -16,6 +16,7 @@ import urllib.request
 from datetime import datetime as dt
 
 DOCKER_HUB_REGISTRY = "https://registry.hub.docker.com"
+EXCEPT_ARCH = {"386", "arm/v6", "arm/v7", "ppc64le", "s390x"}
 
 def hrn(num, magnitude=1024):
     "Human-readable-number"
@@ -183,8 +184,6 @@ REPORT_CLASSES = {
     'js': JsReport,
     'detailed': DetailedReport
 }
-
-EXCEPT_ARCH = {"386", "arm/v6", "arm/v7", "ppc64le", "s390x"}
 
 def main():
     "Run from the command line"
