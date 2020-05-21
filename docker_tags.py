@@ -64,7 +64,7 @@ class Report:
                 self.page_separator()
             else:
                 self.start()
-            for page_num, page in enumerate(self.hub_data(repo_name)):
+            for page_num, page in enumerate(hub_data(repo_name)):
                 self.page_heading(repo_num, repo_name, page_num, page)
                 self.page_content(repo_num, repo_name, page_num, page)
                 self.page_bottom(repo_num, repo_name, page_num, page)
