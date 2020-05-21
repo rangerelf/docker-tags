@@ -126,6 +126,7 @@ class JsReport(Report):
     def finish(self):
         self._stream.write("]}")
 
+# pylint: disable=invalid-name,redefined-outer-name
 def _fmt1(architecture, variant, os, os_version, size, **_):
     "Return a single architecture formatted"
     arch = f'{architecture}'+(f'/{variant}' if variant else '')
