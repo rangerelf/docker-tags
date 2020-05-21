@@ -96,12 +96,12 @@ class Report:
         # Empty by default
 
 class RawReport(Report):
-    "Print out the raw json"
+    "Emit the json content as it's received from the Docker API"
     def page_content(self, repo_num, repo_name, page_num, page_data):
         self._stream.write(json.dumps(page_data, indent=2))
 
 class JsReport(Report):
-    "Print out a valid json report"
+    "Stream the received json into a single valid document"
     def start(self):
         self._stream.write("{")
 
@@ -131,7 +131,7 @@ def _fmt1(architecture, variant, os, os_version, size, **_):
     size
 
 class BriefReport(Report):
-    "Print out a per-line report"
+    "Print out a terse report with one record per line"
     def page_separator(self):
         # Print out a line between repositories
         self._stream.write(f"{'='*64}\n")
@@ -156,7 +156,7 @@ class BriefReport(Report):
         return default
 
 class DetailedReport(BriefReport):
-    "The detailed, verbose report"
+    "A more detailed report"
     # pylint: disable=arguments-differ
     def content_line(self, repo_name, name, full_size, last_updated, **_):
         wrt = self._stream.write
