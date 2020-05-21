@@ -31,6 +31,19 @@ def repo_url(name, registry=DOCKER_HUB_REGISTRY):
         return f"{registry}/v2/repositories/{name}/tags/"
     return f"{registry}/v2/repositories/library/{name}/tags/"
 
+def hub_data(repo_name):
+    "Iterate the data pages from the given repository"
+    url = repo_url(repo_name)
+    while url:
+        rsp = urllib.request.urlopen(url)
+        status, body = rsp.getcode(), rsp.read().decode("utf8")
+        if not 200 <= status < 300:
+            sys.stderr.write(f"[W] Bad http status: {status} [{body}]\n")
+            break
+        data = json.loads(body)
+        yield data
+        url = data["next"]
+
 class Report:
     "Base report class"
     _stream = None
@@ -40,19 +53,6 @@ class Report:
         self._stream = kw.get("stream") or sys.stdout
         self._jsonlog = open(kw.get("json_log") or os.devnull, "w")
 
-    def hub_data(self, repo_name):
-        "Iterate the data pages from the given repository"
-        url = repo_url(repo_name)
-        while url:
-            rsp = urllib.request.urlopen(url)
-            status, body = rsp.getcode(), rsp.read().decode("utf8")
-            if not 200 <= status < 300:
-                sys.stderr.write(f"[W] Bad http status: {status} [{body}]\n")
-                break
-            self._jsonlog.writelines([body, "\n"])
-            data = json.loads(body)
-            yield data
-            url = data["next"]
 
     def run(self, docker_repos):
         "The main report loop"
