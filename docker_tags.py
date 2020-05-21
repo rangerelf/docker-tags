@@ -47,12 +47,9 @@ def hub_data(repo_name):
 class Report:
     "Base report class"
     _stream = None
-    _jsonlog = None
 
     def __init__(self, **kw):
         self._stream = kw.get("stream") or sys.stdout
-        self._jsonlog = open(kw.get("json_log") or os.devnull, "w")
-
 
     def run(self, docker_repos):
         "The main report loop"
@@ -186,11 +183,8 @@ EXCEPT_ARCH = {"386", "arm/v6", "arm/v7", "ppc64le", "s390x"}
 
 def main():
     "Run from the command line"
-    from argparse import ArgumentParser, FileType
+    from argparse import ArgumentParser
     agp = ArgumentParser(description=__doc__)
-    agp.add_argument("--json", action="store", default=None,
-            type=FileType('w'),
-            help="Stream received json to this file")
     agp.add_argument("--all-arch", action="store_true", default=False,
             help="Don't omit the uncommon architectures")
     agp.add_argument("--report", type=str, action="store", default="brief",
@@ -208,7 +202,7 @@ def main():
         _ = ", ".join(EXCEPT_ARCH)
         sys.stderr.write(f"Omitting these architectures: {_}\n")
     try:
-        cls(json_log=args.json, stream=sys.stdout).run(args.images)
+        cls(stream=sys.stdout).run(args.images)
     except KeyboardInterrupt:
         print("")
 
