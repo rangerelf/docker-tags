@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 # pylint: disable=bad-continuation,eval-used
 """
-docker_tags.py
+Query the public docker hub for available versions
+of one or more repositories.
 """
+
+__author__ = "Gustavo Cordova Avila"
+__version__ = '1.0'
+
 import os
 import sys
 import json
@@ -11,6 +16,7 @@ import urllib.request
 from datetime import datetime as dt
 
 DOCKER_HUB_REGISTRY = "https://registry.hub.docker.com"
+EXCEPT_ARCH = {"386", "arm/v6", "arm/v7", "ppc64le", "s390x"}
 
 def hrn(num, magnitude=1024):
     "Human-readable-number"
@@ -31,28 +37,25 @@ def repo_url(name, registry=DOCKER_HUB_REGISTRY):
         return f"{registry}/v2/repositories/{name}/tags/"
     return f"{registry}/v2/repositories/library/{name}/tags/"
 
+def hub_data(repo_name):
+    "Iterate the data pages from the given repository"
+    url = repo_url(repo_name)
+    while url:
+        rsp = urllib.request.urlopen(url)
+        status, body = rsp.getcode(), rsp.read().decode("utf8")
+        if not 200 <= status < 300:
+            sys.stderr.write(f"[W] Bad http status: {status} [{body}]\n")
+            break
+        data = json.loads(body)
+        yield data
+        url = data["next"]
+
 class Report:
     "Base report class"
     _stream = None
-    _jsonlog = None
 
     def __init__(self, **kw):
         self._stream = kw.get("stream") or sys.stdout
-        self._jsonlog = open(kw.get("json_log") or os.devnull, "w")
-
-    def hub_data(self, repo_name):
-        "Iterate the data pages from the given repository"
-        url = repo_url(repo_name)
-        while url:
-            rsp = urllib.request.urlopen(url)
-            status, body = rsp.getcode(), rsp.read().decode("utf8")
-            if not 200 <= status < 300:
-                sys.stderr.write(f"[W] Bad http status: {status} [{body}]\n")
-                break
-            self._jsonlog.writelines([body, "\n"])
-            data = json.loads(body)
-            yield data
-            url = data["next"]
 
     def run(self, docker_repos):
         "The main report loop"
@@ -62,7 +65,7 @@ class Report:
                 self.page_separator()
             else:
                 self.start()
-            for page_num, page in enumerate(self.hub_data(repo_name)):
+            for page_num, page in enumerate(hub_data(repo_name)):
                 self.page_heading(repo_num, repo_name, page_num, page)
                 self.page_content(repo_num, repo_name, page_num, page)
                 self.page_bottom(repo_num, repo_name, page_num, page)
@@ -99,12 +102,12 @@ class Report:
         # Empty by default
 
 class RawReport(Report):
-    "Print out the raw json"
+    "Emit the json content as it's received from the Docker API"
     def page_content(self, repo_num, repo_name, page_num, page_data):
         self._stream.write(json.dumps(page_data, indent=2))
 
 class JsReport(Report):
-    "Print out a valid json report"
+    "Stream the received json into a single valid document"
     def start(self):
         self._stream.write("{")
 
@@ -123,6 +126,7 @@ class JsReport(Report):
     def finish(self):
         self._stream.write("]}")
 
+# pylint: disable=invalid-name,redefined-outer-name
 def _fmt1(architecture, variant, os, os_version, size, **_):
     "Return a single architecture formatted"
     arch = f'{architecture}'+(f'/{variant}' if variant else '')
@@ -134,7 +138,7 @@ def _fmt1(architecture, variant, os, os_version, size, **_):
     size
 
 class BriefReport(Report):
-    "Print out a per-line report"
+    "Print out a terse report with one record per line"
     def page_separator(self):
         # Print out a line between repositories
         self._stream.write(f"{'='*64}\n")
@@ -159,7 +163,7 @@ class BriefReport(Report):
         return default
 
 class DetailedReport(BriefReport):
-    "The detailed, verbose report"
+    "A more detailed report"
     # pylint: disable=arguments-differ
     def content_line(self, repo_name, name, full_size, last_updated, **_):
         wrt = self._stream.write
@@ -182,33 +186,33 @@ REPORT_CLASSES = {
     'detailed': DetailedReport
 }
 
-EXCEPT_ARCH = {"386", "arm/v6", "arm/v7", "ppc64le", "s390x"}
-
 def main():
     "Run from the command line"
-    from argparse import ArgumentParser, FileType
+    from argparse import ArgumentParser
     agp = ArgumentParser(description=__doc__)
-    agp.add_argument("--json", action="store", default=None,
-            type=FileType('w'),
-            help="Stream received json to this file")
-    agp.add_argument("--all-arch", action="store_true", default=False,
-            help="Don't omit the uncommon architectures")
-    agp.add_argument("--report", type=str, action="store", default="brief",
-            help="Use this report type (brief|raw|detailed)")
-    agp.add_argument("images", nargs="+",
+    _ = ", ".join(sorted(EXCEPT_ARCH))
+    agp.add_argument("--all",
+            action="store_true", default=False,
+            help=f"Don't omit any architectures ({_})")
+    _ = "|".join(sorted(REPORT_CLASSES))
+    agp.add_argument("--report",
+            action="store", type=str, default="brief",
+            help=f"Set the report type to use ({_})")
+    agp.add_argument("images",
+            action="store", type=str, nargs="+",
             help="Docker images to check")
     args = agp.parse_args()
     cls = REPORT_CLASSES.get(args.report)
     if not cls:
         args.error(f"Unknown report type: {args.report}")
-    if args.all_arch:
+    if args.all:
         sys.stderr.write("Displaying all architectures\n")
         EXCEPT_ARCH.clear()
     else:
         _ = ", ".join(EXCEPT_ARCH)
         sys.stderr.write(f"Omitting these architectures: {_}\n")
     try:
-        cls(json_log=args.json, stream=sys.stdout).run(args.images)
+        cls(stream=sys.stdout).run(args.images)
     except KeyboardInterrupt:
         print("")
 
