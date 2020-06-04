@@ -169,7 +169,8 @@ class DetailedReport(BriefReport):
         wrt(f"{repo_name}:{name}{last_updated}\n")
         archs = architectures(_["images"])
         if archs:
-            for xid, (nm, vr, os, osv, sz) in sorted(archs.items()):
+            # pylint: disable=invalid-name,redefined-outer-name
+            for _, (nm, vr, os, osv, sz) in sorted(archs.items()):
                 vr = f"/{vr}" if vr else ''
                 os = f" {os}" if os else ''
                 osv = f"-{osv}" if os and osv else ''
