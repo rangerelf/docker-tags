@@ -175,7 +175,7 @@ class DetailedReport(BriefReport):
                 osv = f"-{osv}" if os and osv else ''
                 wrt(f"  {nm}{vr}{os}{osv} {hrn(sz)}\n")
         else:
-            wrt(f"  Linux/x86_64 {hrn(full_size)}\n")
+            wrt(f"  x86_64 Linux {hrn(full_size)}\n")
         wrt("\n")
 
 REPORT_CLASSES = {
