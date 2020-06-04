@@ -128,15 +128,16 @@ class JsReport(Report):
 
 def architectures(docker_images):
     "Return a (id, (arch, variant, os, os_v, size)) dict from the images"
+    # pylint: disable=invalid-name,redefined-outer-name
     def xid(architecture, variant, os, os_version, size, **_):
         "Return the short id for an architecture"
-        arch_id = \
-            f'{architecture}'+(f'/{variant}' if variant else '') \
+        sh_id = f'{architecture}'+(f'/{variant}' if variant else '')
+        ln_id = f"{sh_id}" \
             + (f':{os[0].upper()}' if os else '') \
             + (f'-{os_version.split(".")[0]}' if os_version else '')
-        return arch_id, (architecture, variant, os, os_version, size)
+        return sh_id, ln_id, (architecture, variant, os, os_version, size)
     arch = (xid(**_) for _ in docker_images)
-    return {k: v for k,v in arch if k not in EXCEPT_ARCH}
+    return {ln: v for sh, ln, v in arch if sh not in EXCEPT_ARCH}
 
 class BriefReport(Report):
     "Print out a terse report with one record per line"
