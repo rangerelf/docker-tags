@@ -16,7 +16,7 @@ import urllib.request
 from datetime import datetime as dt
 
 DOCKER_HUB_REGISTRY = "https://registry.hub.docker.com"
-EXCEPT_ARCH = {"386", "arm/v6", "arm/v7", "ppc64le", "s390x"}
+EXCEPT_ARCH = {"386", "arm/v5", "arm/v6", "arm/v7", "ppc64le", "s390x"}
 
 def hrn(num, magnitude=1024):
     "Human-readable-number"
@@ -126,16 +126,18 @@ class JsReport(Report):
     def finish(self):
         self._stream.write("]}")
 
-# pylint: disable=invalid-name,redefined-outer-name
-def _fmt1(architecture, variant, os, os_version, size, **_):
-    "Return a single architecture formatted"
-    arch = f'{architecture}'+(f'/{variant}' if variant else '')
-    if arch in EXCEPT_ARCH:
-        return None
-    return arch \
-    + (f':{os[0].upper()}' if os else '') \
-    + (f'-{os_version.split(".")[0]}' if os_version else ''), \
-    size
+def architectures(docker_images):
+    "Return a (id, (arch, variant, os, os_v, size)) dict from the images"
+    # pylint: disable=invalid-name,redefined-outer-name
+    def xid(architecture, variant, os, os_version, size, **_):
+        "Return the short id for an architecture"
+        sh_id = f'{architecture}'+(f'/{variant}' if variant else '')
+        ln_id = f"{sh_id}" \
+            + (f':{os[0].upper()}' if os else '') \
+            + (f'-{os_version.split(".")[0]}' if os_version else '')
+        return sh_id, ln_id, (architecture, variant, os, os_version, size)
+    arch = (xid(**_) for _ in docker_images)
+    return {ln: v for sh, ln, v in arch if sh not in EXCEPT_ARCH}
 
 class BriefReport(Report):
     "Print out a terse report with one record per line"
@@ -148,19 +150,10 @@ class BriefReport(Report):
             self.content_line(repo_name, **ent)
 
     # pylint: disable=arguments-differ
-    def content_line(self, repo_name, name, full_size, **_):
-        size = hrn(full_size)
-        archs = self.architectures(_["images"], [("x86_64", full_size)])
-        alst = ", ".join(a for a, s in sorted(archs))
-        self._stream.write(f"{repo_name}:{name}  {size}  [{alst}]\n")
-
-    # pylint: disable=no-self-use
-    def architectures(self, images, default=None):
-        "Return a list of all the supported architectures"
-        if images:
-            found = [_fmt1(**_) for _ in images]
-            return list(dict(_ for _ in found if _).items())
-        return default
+    def content_line(self, repo_name, name, full_size, images, **_):
+        archs = sorted(architectures(images).keys() or ["x86_64"])
+        self._stream.write(
+            f"{repo_name}:{name} {hrn(full_size)} [{', '.join(archs)}]\n")
 
 class DetailedReport(BriefReport):
     "A more detailed report"
@@ -174,9 +167,16 @@ class DetailedReport(BriefReport):
             except ValueError:
                 upddt = last_updated = ""
         wrt(f"{repo_name}:{name}{last_updated}\n")
-        archs = self.architectures(_["images"], [("x86_64", full_size)])
-        for arch, size in sorted(archs):
-            wrt(f"  {arch}  {hrn(size)}\n")
+        archs = architectures(_["images"])
+        if archs:
+            # pylint: disable=invalid-name,redefined-outer-name
+            for _, (nm, vr, os, osv, sz) in sorted(archs.items()):
+                vr = f"/{vr}" if vr else ''
+                os = f" {os}" if os else ''
+                osv = f"-{osv}" if os and osv else ''
+                wrt(f"  {nm}{vr}{os}{osv} {hrn(sz)}\n")
+        else:
+            wrt(f"  x86_64 Linux {hrn(full_size)}\n")
         wrt("\n")
 
 REPORT_CLASSES = {
