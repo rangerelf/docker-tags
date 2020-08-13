@@ -15,7 +15,7 @@ import urllib.request
 
 from datetime import datetime as dt
 
-DOCKER_HUB_REGISTRY = "https://registry.hub.docker.com"
+DOCKER_HUB = "https://registry.hub.docker.com"
 EXCEPT_ARCH = {"386", "arm/v5", "arm/v6", "arm/v7", "ppc64le", "s390x"}
 
 def hrn(num, magnitude=1024):
@@ -31,15 +31,10 @@ def hrn(num, magnitude=1024):
             return f"{num:,}.{(100*frac//1024):02}{mag}B"
     return f"{num:,}.{(100*frac//1024):02}PB"
 
-def repo_url(name, registry=DOCKER_HUB_REGISTRY):
-    "Yield each url created from the repo names in 'names'"
-    if '/' in name:
-        return f"{registry}/v2/repositories/{name}/tags/"
-    return f"{registry}/v2/repositories/library/{name}/tags/"
-
-def hub_data(repo_name):
+def hub_data(repo):
     "Iterate the data pages from the given repository"
-    url = repo_url(repo_name)
+    lib = '' if '/' in repo else 'library/'
+    url = f"{DOCKER_HUB}/v2/repositories/{lib}{repo}/tags/"
     while url:
         rsp = urllib.request.urlopen(url)
         status, body = rsp.getcode(), rsp.read().decode("utf8")
@@ -141,9 +136,11 @@ def architectures(docker_images):
 
 class BriefReport(Report):
     "Print out a terse report with one record per line"
+    LINE = "="*64+"\n"
+
     def page_separator(self):
         # Print out a line between repositories
-        self._stream.write(f"{'='*64}\n")
+        self._stream.write(self.LINE)
 
     def page_content(self, repo_num, repo_name, page_num, page_data):
         for ent in page_data["results"]:
@@ -152,8 +149,22 @@ class BriefReport(Report):
     # pylint: disable=arguments-differ
     def content_line(self, repo_name, name, full_size, images, **_):
         archs = sorted(architectures(images).keys() or ["x86_64"])
+        if full_size:
+            weight = hrn(full_size)
+        else:
+            weights = [_["size"] for _ in images if _.get("size")]
+            if weights:
+                min_w, max_w = min(weights), max(weights)
+                if min_w != max_w:
+                    weight = f"{hrn(min_w)}~{hrn(max_w)}"
+                elif min_w:
+                    weight = f"{hrn(min_w)}"
+                else:
+                    weight = "???"
+            else:
+                weight = "???"
         self._stream.write(
-            f"{repo_name}:{name} {hrn(full_size)} [{', '.join(archs)}]\n")
+            f"{repo_name}:{name} {weight} [{', '.join(archs)}]\n")
 
 class DetailedReport(BriefReport):
     "A more detailed report"
@@ -209,7 +220,7 @@ def main():
         sys.stderr.write("Displaying all architectures\n")
         EXCEPT_ARCH.clear()
     else:
-        _ = ", ".join(EXCEPT_ARCH)
+        _ = ", ".join(sorted(EXCEPT_ARCH))
         sys.stderr.write(f"Omitting these architectures: {_}\n")
     try:
         cls(stream=sys.stdout).run(args.images)
